@@ -20,6 +20,10 @@ import getVoiceActors from "../controllers/actors.controller.js";
 import getCharacter from "../controllers/characters.controller.js";
 import * as filterController from "../controllers/filter.controller.js";
 import getTopSearch from "../controllers/topsearch.controller.js";
+import * as graphqlController from "../controllers/graphql.controller.js";
+import * as anilistOAuthController from "../controllers/anilist-oauth.controller.js";
+import * as malOAuthController from "../controllers/mal-oauth.controller.js";
+import * as malProxyController from "../controllers/mal-proxy.controller.js";
 
 export const createApiRoutes = (app, jsonResponse, jsonError) => {
   const createRoute = (path, controllerMethod) => {
@@ -86,4 +90,50 @@ export const createApiRoutes = (app, jsonResponse, jsonError) => {
   createRoute("/api/actors/:id", getVoiceActors);
   createRoute("/api/character/:id", getCharacter);
   createRoute("/api/top-search", getTopSearch);
+
+  // OAuth and Proxy routes (POST methods)
+  app.post("/api/graphql", async (req, res) => {
+    try {
+      await graphqlController.proxyGraphQL(req, res);
+    } catch (err) {
+      console.error("Error in GraphQL route:", err);
+      if (!res.headersSent) {
+        return res.status(500).json({ error: err.message || "Internal server error" });
+      }
+    }
+  });
+
+  app.post("/api/anilist/oauth/token", async (req, res) => {
+    try {
+      await anilistOAuthController.exchangeToken(req, res);
+    } catch (err) {
+      console.error("Error in AniList OAuth route:", err);
+      if (!res.headersSent) {
+        return res.status(500).json({ error: err.message || "Internal server error" });
+      }
+    }
+  });
+
+  app.post("/api/mal/oauth/token", async (req, res) => {
+    try {
+      await malOAuthController.exchangeToken(req, res);
+    } catch (err) {
+      console.error("Error in MAL OAuth route:", err);
+      if (!res.headersSent) {
+        return res.status(500).json({ error: err.message || "Internal server error" });
+      }
+    }
+  });
+
+  // MAL API proxy - catch all MAL API paths (supports all HTTP methods)
+  app.all("/api/mal/*", async (req, res) => {
+    try {
+      await malProxyController.proxyMALAPI(req, res);
+    } catch (err) {
+      console.error("Error in MAL proxy route:", err);
+      if (!res.headersSent) {
+        return res.status(500).json({ error: err.message || "Internal server error" });
+      }
+    }
+  });
 };
