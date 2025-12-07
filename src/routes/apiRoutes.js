@@ -26,44 +26,54 @@ import * as malOAuthController from "../controllers/mal-oauth.controller.js";
 import * as malProxyController from "../controllers/mal-proxy.controller.js";
 
 export const createApiRoutes = (app, jsonResponse, jsonError) => {
+  // Helper for GET routes with CORS
   const createRoute = (path, controllerMethod) => {
     app.get(path, async (req, res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,POST");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+      if (req.method === "OPTIONS") return res.status(200).end();
+
       try {
         const data = await controllerMethod(req, res);
-        if (!res.headersSent) {
-          return jsonResponse(res, data);
-        }
+        if (!res.headersSent) return jsonResponse(res, data);
       } catch (err) {
         console.error(`Error in route ${path}:`, err);
-        if (!res.headersSent) {
-          return jsonError(res, err.message || "Internal server error");
-        }
+        if (!res.headersSent) return jsonError(res, err.message || "Internal server error");
       }
     });
   };
 
-  ["/api", "/api/"].forEach((route) => {
-    app.get(route, async (req, res) => {
+  // Helper for POST routes with CORS
+  const createPostRoute = (path, controllerMethod) => {
+    app.post(path, async (req, res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,POST");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+      if (req.method === "OPTIONS") return res.status(200).end();
+
       try {
-        const data = await homeInfoController.getHomeInfo(req, res);
-        if (!res.headersSent) {
-          return jsonResponse(res, data);
-        }
+        await controllerMethod(req, res);
       } catch (err) {
-        console.error("Error in home route:", err);
-        if (!res.headersSent) {
-          return jsonError(res, err.message || "Internal server error");
-        }
+        console.error(`Error in POST route ${path}:`, err);
+        if (!res.headersSent) return res.status(500).json({ error: err.message || "Internal server error" });
       }
     });
+  };
+
+  // Home routes
+  ["/api", "/api/"].forEach((route) => {
+    createRoute(route, homeInfoController.getHomeInfo);
   });
 
+  // Category routes
   routeTypes.forEach((routeType) =>
-    createRoute(`/api/${routeType}`, (req, res) =>
-      categoryController.getCategory(req, res, routeType)
-    )
+    createRoute(`/api/${routeType}`, (req, res) => categoryController.getCategory(req, res, routeType))
   );
 
+  // Main API routes
   createRoute("/api/top-ten", topTenController.getTopTen);
   createRoute("/api/info", animeInfoController.getAnimeInfo);
   createRoute("/api/episodes/:id", episodeListController.getEpisodes);
@@ -74,66 +84,35 @@ export const createApiRoutes = (app, jsonResponse, jsonError) => {
   createRoute("/api/filter", filterController.filter);
   createRoute("/api/search/suggest", suggestionsController.getSuggestions);
   createRoute("/api/schedule", scheduleController.getSchedule);
-  createRoute(
-    "/api/schedule/:id",
-    nextEpisodeScheduleController.getNextEpisodeSchedule
-  );
+  createRoute("/api/schedule/:id", nextEpisodeScheduleController.getNextEpisodeSchedule);
   createRoute("/api/random", randomController.getRandom);
   createRoute("/api/random/id", randomIdController.getRandomId);
   createRoute("/api/qtip/:id", qtipController.getQtip);
   createRoute("/api/producer/:id", producerController.getProducer);
-  createRoute(
-    "/api/character/list/:id",
-    characterListController.getVoiceActors
-  );
+  createRoute("/api/character/list/:id", characterListController.getVoiceActors);
   createRoute("/api/watchlist/:userId/:page?", getWatchlist);
   createRoute("/api/actors/:id", getVoiceActors);
   createRoute("/api/character/:id", getCharacter);
   createRoute("/api/top-search", getTopSearch);
 
-  // OAuth and Proxy routes (POST methods)
-  app.post("/api/graphql", async (req, res) => {
-    try {
-      await graphqlController.proxyGraphQL(req, res);
-    } catch (err) {
-      console.error("Error in GraphQL route:", err);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message || "Internal server error" });
-      }
-    }
-  });
+  // OAuth and proxy routes
+  createPostRoute("/api/graphql", graphqlController.proxyGraphQL);
+  createPostRoute("/api/anilist/oauth/token", anilistOAuthController.exchangeToken);
+  createPostRoute("/api/mal/oauth/token", malOAuthController.exchangeToken);
 
-  app.post("/api/anilist/oauth/token", async (req, res) => {
-    try {
-      await anilistOAuthController.exchangeToken(req, res);
-    } catch (err) {
-      console.error("Error in AniList OAuth route:", err);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message || "Internal server error" });
-      }
-    }
-  });
-
-  app.post("/api/mal/oauth/token", async (req, res) => {
-    try {
-      await malOAuthController.exchangeToken(req, res);
-    } catch (err) {
-      console.error("Error in MAL OAuth route:", err);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message || "Internal server error" });
-      }
-    }
-  });
-
-  // MAL API proxy - catch all MAL API paths (supports all HTTP methods)
+  // MAL proxy catch-all
   app.all("/api/mal/*", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,POST");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") return res.status(200).end();
+
     try {
       await malProxyController.proxyMALAPI(req, res);
     } catch (err) {
       console.error("Error in MAL proxy route:", err);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: err.message || "Internal server error" });
-      }
+      if (!res.headersSent) return res.status(500).json({ error: err.message || "Internal server error" });
     }
   });
 };
